@@ -4,7 +4,7 @@ import { connect } from "cloudflare:sockets";
 let 订阅路径 = "订阅路径";
 let 伪装网页;
 let 验证UUID;
-let 反代IP = "proxyip.cmliussss.net";
+let 反代IP = "google-friendly-proxy.com";
 
 const 默认优选 = "www.google.com";
 
