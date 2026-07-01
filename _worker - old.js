@@ -26,7 +26,7 @@ export default {
     订阅路径 = env.SUB_PATH ?? 订阅路径;
     验证UUID = 生成UUID();
     反代IP = env.PROXY_IP ?? 反代IP;
-    伪装网页 = env.FAKE_WEB ?? "https://github.com";
+    伪装网页 = env.FAKE_WEB;
 
     const url = new URL(访问请求.url);
     const 读取我的请求标头 = 访问请求.headers.get("Upgrade");
@@ -42,16 +42,37 @@ export default {
     const 是正确路径 = url.pathname === 路径配置.威图锐 ||
                       url.pathname === 路径配置.科拉什 ||
                       url.pathname === 路径配置.订阅聚合 ||
-                      url.pathname === `/${encodeURI(订阅路径)}`;
+                      url.pathname === `/${encodeURI(订阅路径)}`
 
-    // 处理WS请求
-    if (WS请求 && 是正确路径) {
-      return await 升级WS请求();
+    if (!WS请求 && !是正确路径) {
+      if (伪装网页) {
+        try {
+          const targetBase = 伪装网页.startsWith('http://') || 伪装网页.startsWith('https://')
+            ? 伪装网页
+            : `https://${伪装网页}`;
+
+          const targetUrl = new URL(targetBase);
+          targetUrl.pathname = url.pathname;
+          targetUrl.search = url.search;
+
+          const 请求对象 = new Request(targetUrl.toString(), {
+            method: 访问请求.method,
+            headers: 访问请求.headers,
+            body: 访问请求.body,
+          });
+
+          const 响应对象 = await fetch(请求对象);
+          return 响应对象;
+        } catch {
+          console.error(`[伪装网页请求失败] 目标: ${伪装网页}`);
+          return new Response(null, { status: 404 });
+        }
+      } else {
+        return new Response(null, { status: 404 });
+      }
     }
 
-    // 处理非WS请求
     if (!WS请求) {
-      // 处理订阅路径
       if (url.pathname === 路径配置.威图锐) {
         return 威图锐配置文件(访问请求.headers.get("Host"));
       }
@@ -62,67 +83,21 @@ export default {
         return 聚合信息(访问请求.headers.get("Host"));
       }
       else if (url.pathname === 路径配置.通用订阅) {
-        const 用户代理 = 访问请求.headers.get("User-Agent")?.toLowerCase() || "";
+        const 用户代理 = 访问请求.headers.get("User-Agent").toLowerCase();
         const 配置生成器 = {
           [威图锐]: 威图锐配置文件,
           [科拉什]: 科拉什配置文件,
           tips: 提示界面,
         };
-        let 工具 = Object.keys(配置生成器).find((工具) => 用户代理.includes(工具));
-        if (!工具) {
-          工具 = "tips";
-        }
-        const 生成配置 = 配置生成器[工具];
+        const 工具 = Object.keys(配置生成器).find((工具) => 用户代理.includes(工具));
+        const 生成配置 = 配置生成器[工具 || "tips"];
         return 生成配置(访问请求.headers.get("Host"));
       }
     }
 
-    // 处理伪装请求（非订阅路径的请求）
-    if (伪装网页) {
-      try {
-        let targetBase = 伪装网页;
-        if (!targetBase.startsWith('http://') && !targetBase.startsWith('https://')) {
-          targetBase = `https://${targetBase}`;
-        }
-
-        const targetUrl = new URL(targetBase);
-        targetUrl.pathname = url.pathname;
-        targetUrl.search = url.search;
-
-        // 构建新请求，移除可能导致问题的头部
-        const 新请求头 = new Headers(访问请求.headers);
-        新请求头.delete("origin");
-        新请求头.delete("referer");
-        新请求头.delete("content-length");
-        
-        const 请求对象 = new Request(targetUrl.toString(), {
-          method: 访问请求.method,
-          headers: 新请求头,
-          body: 访问请求.body,
-          redirect: 'follow'
-        });
-
-        const 响应对象 = await fetch(请求对象);
-        const 响应头 = new Headers(响应对象.headers);
-        响应头.delete("x-github-request-id");
-        响应头.delete("x-xss-protection");
-        
-        return new Response(响应对象.body, {
-          status: 响应对象.status,
-          statusText: 响应对象.statusText,
-          headers: 响应头
-        });
-      } catch (error) {
-        console.error(`[伪装网页请求失败] 目标: ${伪装网页}`, error);
-        return new Response(`<h1>代理服务运行中</h1><p>订阅路径: ${订阅路径}</p>`, {
-          status: 200,
-          headers: { "Content-Type": "text/html;charset=utf-8" }
-        });
-      }
+    if (WS请求) {
+      return await 升级WS请求();
     }
-
-    // 如果没有任何匹配，返回404
-    return new Response(null, { status: 404 });
   },
 };
 
@@ -158,6 +133,22 @@ async function 启动传输管道(WS接口) {
       return;
     }
 
+  // 解析地址后，添加 Google 优选 IP 替换
+  const 谷歌优选IPs = [
+    "142.250.185.78",
+    "142.250.185.46", 
+    "142.250.185.110",
+    "142.250.185.14",
+    "142.250.185.2"
+  ];
+  
+  // 如果访问地址是 Google 相关域名，替换成优选 IP
+  if (访问地址.includes("google.com") || 
+      访问地址.includes("youtube.com") || 
+      访问地址.includes("gstatic.com")) {
+    访问地址 = 谷歌优选IPs[Math.floor(Math.random() * 谷歌优选IPs.length)];
+  }
+
     const 获取数据定位 = new Uint8Array(VL数据)[17];
     const 提取端口索引 = 18 + 获取数据定位 + 1;
     const 建立端口缓存 = VL数据.slice(提取端口索引, 提取端口索引 + 2);
@@ -192,21 +183,6 @@ async function 启动传输管道(WS接口) {
         break;
       default:
         return;
-    }
-
-    // 解析地址后，添加 Google 优选 IP 替换
-    const 谷歌优选IPs = [
-      "142.250.185.78",
-      "142.250.185.46", 
-      "142.250.185.110",
-      "142.250.185.14",
-      "142.250.185.2"
-    ];
-    
-    if (访问地址.includes("google.com") || 
-        访问地址.includes("youtube.com") || 
-        访问地址.includes("gstatic.com")) {
-      访问地址 = 谷歌优选IPs[Math.floor(Math.random() * 谷歌优选IPs.length)];
     }
 
     const 写入初始数据 = VL数据.slice(地址信息索引 + 地址长度);
@@ -327,25 +303,4 @@ rules:
 `;
 
   return new Response(配置内容);
-}
-
-// 聚合信息函数
-async function 聚合信息(hostName) {
-  const info = `
-订阅信息:
-- 订阅路径: ${订阅路径}
-- UUID: ${验证UUID}
-- 代理IP: ${反代IP}
-- 伪装网页: ${伪装网页}
-
-可用节点:
-- V2Ray: /${encodeURI(订阅路径)}/${威图锐}
-- Clash: /${encodeURI(订阅路径)}/${科拉什}
-- 通用订阅: /${encodeURI(订阅路径)}
-`;
-
-  return new Response(info, {
-    status: 200,
-    headers: { "Content-Type": "text/plain;charset=utf-8" }
-  });
 }
