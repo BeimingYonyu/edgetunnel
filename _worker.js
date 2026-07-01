@@ -89,20 +89,68 @@ export default {
         targetUrl.pathname = url.pathname;
         targetUrl.search = url.search;
 
-        // 构建新请求，移除可能导致问题的头部
+        // 构建新请求，保留必要的头部
         const 新请求头 = new Headers(访问请求.headers);
-        新请求头.delete("origin");
-        新请求头.delete("referer");
-        新请求头.delete("content-length");
         
+        // 保留这些头部，但移除可能导致问题的
+        新请求头.delete("cf-connecting-ip");
+        新请求头.delete("cf-ipcountry");
+        新请求头.delete("cf-ray");
+        新请求头.delete("cf-visitor");
+        
+        // 修改Host为伪装目标
+        新请求头.set("Host", targetUrl.host);
+        
+        // 如果是POST请求（登录），保留body
         const 请求对象 = new Request(targetUrl.toString(), {
           method: 访问请求.method,
           headers: 新请求头,
           body: 访问请求.body,
-          redirect: 'follow'
+          redirect: 'manual'  // 手动处理重定向
         });
 
         const 响应对象 = await fetch(请求对象);
+        
+        // 处理重定向（登录成功后跳转）
+        if (响应对象.status === 302 || 响应对象.status === 301) {
+          const location = 响应对象.headers.get("Location");
+          if (location) {
+            // 重写重定向URL，保持伪装
+            const redirectUrl = new URL(location, targetUrl);
+            // 返回重定向响应，但修改Location为原域名
+            const 新响应头 = new Headers(响应对象.headers);
+            新响应头.set("Location", redirectUrl.toString());
+            return new Response(null, {
+              status: 响应对象.status,
+              headers: 新响应头
+            });
+          }
+        }
+        
+        // 对于HTML响应，替换其中的链接
+        const contentType = 响应对象.headers.get("Content-Type") || "";
+        if (contentType.includes("text/html")) {
+          const html = await 响应对象.text();
+          // 替换所有指向github.com的链接为当前域名
+          const 修改后html = html.replace(
+            /(href|src|action)=["']https?:\/\/github\.com/g,
+            `$1="${targetUrl.origin}`
+          ).replace(
+            /(href|src|action)=["']\/\//g,
+            `$1="${targetUrl.origin}/`
+          );
+          
+          const 响应头 = new Headers(响应对象.headers);
+          响应头.set("Content-Length", String(修改后html.length));
+          
+          return new Response(修改后html, {
+            status: 响应对象.status,
+            statusText: 响应对象.statusText,
+            headers: 响应头
+          });
+        }
+        
+        // 其他响应直接返回
         const 响应头 = new Headers(响应对象.headers);
         响应头.delete("x-github-request-id");
         响应头.delete("x-xss-protection");
@@ -112,9 +160,17 @@ export default {
           statusText: 响应对象.statusText,
           headers: 响应头
         });
+        
       } catch (error) {
         console.error(`[伪装网页请求失败] 目标: ${伪装网页}`, error);
-        return new Response(`<h1>代理服务运行中</h1><p>订阅路径: ${订阅路径}</p>`, {
+        // 返回更详细的信息以便调试
+        return new Response(`
+          <h1>代理服务运行中</h1>
+          <p>订阅路径: ${订阅路径}</p>
+          <p>伪装目标: ${伪装网页}</p>
+          <p>错误: ${error.message}</p>
+          <p>请检查环境变量 FAKE_WEB 是否正确设置</p>
+        `, {
           status: 200,
           headers: { "Content-Type": "text/html;charset=utf-8" }
         });
