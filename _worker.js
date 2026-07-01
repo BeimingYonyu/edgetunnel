@@ -133,6 +133,22 @@ async function 启动传输管道(WS接口) {
       return;
     }
 
+  // 解析地址后，添加 Google 优选 IP 替换
+  const 谷歌优选IPs = [
+    "142.250.185.78",
+    "142.250.185.46", 
+    "142.250.185.110",
+    "142.250.185.14",
+    "142.250.185.2"
+  ];
+  
+  // 如果访问地址是 Google 相关域名，替换成优选 IP
+  if (访问地址.includes("google.com") || 
+      访问地址.includes("youtube.com") || 
+      访问地址.includes("gstatic.com")) {
+    访问地址 = 谷歌优选IPs[Math.floor(Math.random() * 谷歌优选IPs.length)];
+  }
+
     const 获取数据定位 = new Uint8Array(VL数据)[17];
     const 提取端口索引 = 18 + 获取数据定位 + 1;
     const 建立端口缓存 = VL数据.slice(提取端口索引, 提取端口索引 + 2);
